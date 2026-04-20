@@ -14,14 +14,19 @@ flight_ids <- apdf |>
   unique()
 
 # Fetch CPF (Correlated Position reports) for March 2026
-# point_profiles_tidy returns a lazy dbplyr query — filter before collecting
-profiles <- point_profiles_tidy(
-  wef = "2026-03-01",
-  til = "2026-04-01",
-  profile = "CPF"
-) |>
-  filter(FLIGHT_ID %in% flight_ids) |>
-  collect()
+# Oracle IN clause limited to 1000 items — batch the flight IDs
+id_batches <- split(flight_ids, ceiling(seq_along(flight_ids) / 999))
+
+profiles <- purrr::map(id_batches, \(batch) {
+  point_profiles_tidy(
+    wef = "2026-03-01",
+    til = "2026-04-01",
+    profile = "CPF"
+  ) |>
+    filter(FLIGHT_ID %in% batch) |>
+    collect()
+}) |>
+  bind_rows()
 
 dir.create("data/reference", showWarnings = FALSE, recursive = TRUE)
 write_parquet(profiles, "data/reference/cpf_profiles_UGTB_202603.parquet")
